@@ -659,10 +659,12 @@ class MapleDiffusion {
     var unetTheBattleOfTheFiveArmiesExecutable: MPSGraphExecutable?
     var theBattleOfTheFiveArmiesIndices = [MPSGraphTensor: Int]()
     
-    var width: NSNumber = 64
-    var height: NSNumber = 64
+    var width: NSNumber
+    var height: NSNumber
     
-    public init(saveMemoryButBeSlower: Bool = true) {
+    public init(w: Int, h: Int, saveMemoryButBeSlower: Bool = true) {
+        width = NSNumber(value: w/8)
+        height = NSNumber(value: h/8)
         saveMemory = saveMemoryButBeSlower
         device = MTLCreateSystemDefaultDevice()!
         graphDevice = MPSGraphDevice(mtlDevice: device)
@@ -910,4 +912,3 @@ func tensorToCGImage(data: MPSGraphTensorData) -> CGImage {
     data.mpsndarray().readBytes(&imageArrayCPUBytes, strideBytes: nil)
     return CGImage(width: shape[2], height: shape[1], bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: shape[2]*shape[3], space: CGColorSpaceCreateDeviceRGB(), bitmapInfo:  CGBitmapInfo(rawValue: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.noneSkipLast.rawValue), provider: CGDataProvider(data: NSData(bytes: &imageArrayCPUBytes, length: imageArrayCPUBytes.count))!, decode: nil, shouldInterpolate: true, intent: CGColorRenderingIntent.defaultIntent)!
 }
-

@@ -27,6 +27,8 @@ if not vocab_dest.exists():
 for k, v in ckpt["state_dict"].items():
     if "first_stage_model.encoder" in k: continue
     if not hasattr(v, "numpy"): continue
+    if k.startswith("cond_stage_model.transformer"):
+        k = "cond_stage_model.transformer.text_model" + k[28:]
     v.numpy().astype('float16').tofile(outpath / (k + ".bin"))
     print("exporting state_dict", k, end="\r")
 print("\nexporting other stuff...")
