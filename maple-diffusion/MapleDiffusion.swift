@@ -649,6 +649,9 @@ class MapleDiffusion {
     let diffOut: MPSGraphTensor
     let diffAuxOut: MPSGraphTensor
     
+    let width: NSNumber
+    let height: NSNumber
+    
     // unet
     // MEM-HACK: split into subgraphs
     var unetAnUnexpectedJourneyExecutable: MPSGraphExecutable?
@@ -659,8 +662,6 @@ class MapleDiffusion {
     var unetTheBattleOfTheFiveArmiesExecutable: MPSGraphExecutable?
     var theBattleOfTheFiveArmiesIndices = [MPSGraphTensor: Int]()
     
-    var width: NSNumber
-    var height: NSNumber
     
     public init(w: Int, h: Int, saveMemoryButBeSlower: Bool = true) {
         width = NSNumber(value: w/8)
