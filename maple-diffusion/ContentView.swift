@@ -86,20 +86,21 @@ struct ContentView: View {
 #if os(iOS)
             Text("🍁 Maple Diffusion").foregroundColor(.orange).bold().frame(alignment: Alignment.center)
 #endif
-            let w = UInt(width) ?? 512
-            let h = UInt(height) ?? 768
-            if (image == nil) {
-                Rectangle().fill(.gray).aspectRatio(Double(w)/Double(h), contentMode: .fit)
-                    .frame(minHeight: 512)
-            } else {
-#if os(iOS)
-                ShareLink(item: image!, preview: SharePreview(prompt, image: image!)) {
+            HStack{
+                let w = UInt(width) ?? 512
+                let h = UInt(height) ?? 768
+                if (image == nil) {
+                    Rectangle().fill(.gray).aspectRatio(Double(w)/Double(h), contentMode: .fit)
+                } else {
+    #if os(iOS)
+                    ShareLink(item: image!, preview: SharePreview(prompt, image: image!)) {
+                        image!.resizable().aspectRatio(contentMode: .fit)
+                    }
+    #else
                     image!.resizable().aspectRatio(contentMode: .fit)
+    #endif
                 }
-#else
-                image!.resizable().aspectRatio(contentMode: .fit)
-#endif
-            }
+            }.frame(height: 384)
             HStack {
                 Text("Prompt").bold()
                 TextField("What you want", text: $prompt)
@@ -143,7 +144,7 @@ struct ContentView: View {
                     .foregroundColor(.white)
                     .cornerRadius(32)
             }.buttonStyle(.borderless).disabled(running)
-        }.padding(16)
+        }.padding(16).frame(width: 512)
             //.onAppear(perform: loadModels)
     }
 }
