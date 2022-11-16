@@ -18,11 +18,11 @@ Maple Diffusion runs Stable Diffusion models **locally** on macOS / iOS devices,
 </table>
 <table>
 	<tr>
-		<td align="center"><img src="https://user-images.githubusercontent.com/41315874/202199642-0f33ac35-1768-4ce9-afbc-a2c0cbd02648.png"></td>
+		<td align="center"><img src="https://user-images.githubusercontent.com/41315874/202200056-259cac47-5bba-49c5-b740-5ea10cb1b7c6.png"></td>
 		<td align="center"><img src="https://user-images.githubusercontent.com/41315874/202199676-4726826b-e21b-488e-88e7-0ef7adaa4190.png"></td>
 	</tr>
     <tr>
-		<td align="center">加载的自定义噪声</td>
+		<td align="center">加载的自定义噪声(黑色为透明)</td>
 		<td align="center">相同seed下带自定义噪声的生成</td>
 	</tr>
 </table>
