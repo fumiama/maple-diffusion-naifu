@@ -760,6 +760,18 @@ class MapleDiffusion {
         return graph.run(with: commandQueue, feeds: [:], targetTensors: [out], targetOperations: nil)[out]!
     }
     
+    private func randomLatentByImageGuidance(seed: Int, img: CGImage) -> MPSGraphTensorData {
+        let graph = makeGraph(synchonize: shouldSynchronize)
+        let data = (img.dataProvider?.data)! as Data
+        let imgdata = graph.constant(data, shape: [1, NSNumber(value: img.height), NSNumber(value: img.width), 4], dataType: .uInt8)
+        var imgdata16 = graph.cast(imgdata, to: .float16, name: nil)
+        imgdata16 = graph.division(imgdata16, graph.constant(255*32, dataType: .float16), name: nil)
+        imgdata16 = graph.subtraction(imgdata16, graph.constant(0.5/32, dataType: .float16), name: nil)
+        let rnd = graph.randomTensor(withShape: [1, height, width, 4], descriptor: MPSGraphRandomOpDescriptor(distribution: .normal, dataType: .float16)!, seed: seed, name: nil)
+        let out = graph.addition(rnd, imgdata16, name: nil)
+        return graph.run(with: commandQueue, feeds: [:], targetTensors: [out], targetOperations: nil)[out]!
+    }
+    
     private func runTextGuidance(baseTokens: [Int], tokens: [Int]) -> (MPSGraphTensorData, MPSGraphTensorData) {
         let tokensData = (baseTokens + tokens).map({Int32($0)}).withUnsafeBufferPointer {Data(buffer: $0)}
         let tokensMPSData = MPSGraphTensorData(device: graphDevice, data: tokensData, shape: [2, 77], dataType: MPSDataType.int32)
@@ -828,7 +840,7 @@ class MapleDiffusion {
         return (etaRes[eta0]!, etaRes[eta1]!)
     }
     
-    private func generateLatent(prompt: String, negativePrompt: String, seed: Int, steps: Int, guidanceScale: Float, completion: @escaping (CGImage?, Float, String)->()) -> MPSGraphTensorData {
+    private func generateLatent(prompt: String, negativePrompt: String, seed: Int, steps: Int, guidanceScale: Float, imgGuidance: CGImage?, completion: @escaping (CGImage?, Float, String)->()) -> MPSGraphTensorData {
         completion(nil, 0, "Tokenizing...")
         
         // 1. String -> Tokens
@@ -845,7 +857,7 @@ class MapleDiffusion {
         completion(nil, 0.5 * 1 / Float(steps), "Generating noise...")
         
         // 3. Noise generation
-        var latent = randomLatent(seed: seed)
+        var latent = (imgGuidance == nil) ? randomLatent(seed: seed) : randomLatentByImageGuidance(seed: seed, img: imgGuidance!)
         let timesteps = Array<Int>(stride(from: 1, to: 1000, by: Int(1000 / steps)))
         completion(nil, 0.75 * 1 / Float(steps), "Starting diffusion...")
         
@@ -883,8 +895,8 @@ class MapleDiffusion {
         return latent
     }
     
-    public func generate(prompt: String, negativePrompt: String, seed: Int, steps: Int, guidanceScale: Float, completion: @escaping (CGImage?, Float, String)->()) {
-        let latent = generateLatent(prompt: prompt, negativePrompt: negativePrompt, seed: seed, steps: steps, guidanceScale: guidanceScale, completion: completion)
+    public func generate(prompt: String, negativePrompt: String, seed: Int, steps: Int, guidanceScale: Float, imgGuidance: CGImage? = nil, completion: @escaping (CGImage?, Float, String)->()) {
+        let latent = generateLatent(prompt: prompt, negativePrompt: negativePrompt, seed: seed, steps: steps, guidanceScale: guidanceScale, imgGuidance: imgGuidance, completion: completion)
         
         if (saveMemory) {
             // MEM-HACK: unload the unet to fit the decoder

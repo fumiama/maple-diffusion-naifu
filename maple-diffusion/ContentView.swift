@@ -7,6 +7,7 @@ struct ContentView: View {
     @State var steps: Float = 28
     @State var image: Image?
     @State var _cgim: CGImage?
+    @State var _ld_cgim: CGImage?
     @State var prompt: String = ""
     @State var negativePrompt: String = ""
     @State var width: String = "512"
@@ -16,10 +17,11 @@ struct ContentView: View {
     @State var seed: String = "-1"
     @State var guidanceScale: Float = 12
     @State var running: Bool = false
+    @State var saved: Bool = true
     @State var progressProp: Float = 1
     @State var progressStage: String = "Ready"
-    
-    func loadModels() {
+
+    private func loadModels() {
         dispatchQueue.async {
             running = true
             
@@ -27,10 +29,15 @@ struct ContentView: View {
         }
     }
     
-    func generate() {
+    private func generate() {
         dispatchQueue.async {
             running = true
+            defer {
+                running = false
+                saved = false
+            }
             if mapleDiffusion == nil || width != pw || height != ph {
+                mapleDiffusion = nil // free memory
 #if os(iOS)
     mapleDiffusion = MapleDiffusion(w: Int(UInt(width) ?? 512), h: Int(UInt(height) ?? 768), saveMemoryButBeSlower: true)
 #else
@@ -45,29 +52,34 @@ struct ContentView: View {
             }
             progressStage = ""
             progressProp = 0
-            guard var sd = Int(seed) else {
-                running = false
-                return
-            }
+            guard var sd = Int(seed) else { return }
             if sd <= 0 {
                 sd = Int.random(in: 1..<Int.max)
                 seed = String(sd)
             }
-            mapleDiffusion?.generate(prompt: prompt, negativePrompt: negativePrompt, seed: sd, steps: Int(steps), guidanceScale: guidanceScale) { (cgim, p, s) -> () in
+            prompt = prompt.replacingOccurrences(of: "\n", with: ",").replacingOccurrences(of: "{", with: "").replacingOccurrences(of: "}", with: "").replacingOccurrences(of: "(", with: "").replacingOccurrences(of: ")", with: "").replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: "").replacingOccurrences(of: " ", with: "")
+            negativePrompt = negativePrompt.replacingOccurrences(of: "\n", with: ",").replacingOccurrences(of: "{", with: "").replacingOccurrences(of: "}", with: "").replacingOccurrences(of: "(", with: "").replacingOccurrences(of: ")", with: "").replacingOccurrences(of: "[", with: "").replacingOccurrences(of: "]", with: "").replacingOccurrences(of: " ", with: "")
+            if(prompt.isEmpty || negativePrompt.isEmpty) {
+                return
+            }
+            mapleDiffusion?.generate(prompt: prompt, negativePrompt: negativePrompt, seed: sd, steps: Int(steps), guidanceScale: guidanceScale, imgGuidance: _ld_cgim) { (cgim, p, s) -> () in
                 if (cgim != nil) {
+                    image = nil
                     image = Image(cgim!, scale: 1.0, label: Text("Generated image"))
+                    _cgim = nil
                     _cgim = cgim
+                    _ld_cgim = nil
                 }
                 progressProp = p
                 progressStage = s
             }
-            running = false
         }
     }
     
-    func save() {
-        if _cgim == nil {
-            return
+    private func save() {
+        saved = false
+        defer {
+            saved = true
         }
         let p = NSSavePanel()
         p.allowedContentTypes = [UTType.png]
@@ -80,6 +92,86 @@ struct ContentView: View {
             CGImageDestinationFinalize(dst)
         }
     }
+    
+    private func resetseed() {
+        if (!saved) {
+            let a = NSAlert()
+            a.messageText = "Attention"
+            a.informativeText = "Seed Will be Changed without Saving"
+            a.addButton(withTitle: "Do Anyway")
+            a.addButton(withTitle: "Cancel")
+            a.alertStyle = .warning
+            saved = a.runModal() == .alertFirstButtonReturn
+        }
+        if (saved) {
+            seed = "-1"
+        }
+    }
+    
+    private func load() {
+        let p = NSOpenPanel()
+        p.allowedContentTypes = [UTType.png]
+        if p.runModal() == .OK {
+            let d: URL = p.url!
+            guard let src = CGImageSourceCreateWithURL(d as CFURL, nil) else { return }
+            _ld_cgim = CGImageSourceCreateImageAtIndex(src, 0, nil)
+            let w = UInt(width) ?? 512
+            let h = UInt(height) ?? 768
+            if (_ld_cgim != nil) {
+                if (_ld_cgim?.width ?? 0 < w || _ld_cgim?.height ?? 0 < h) {
+                    let a = NSAlert()
+                    a.messageText = "Warning"
+                    a.informativeText = "Image too Small"
+                    a.addButton(withTitle: "OK")
+                    a.alertStyle = .warning
+                    a.runModal()
+                    return
+                }
+                _ld_cgim = _ld_cgim?.cropping(to: CGRect(x: 0, y: 0, width: Int(w), height: Int(h)))
+                if(_ld_cgim != nil) {
+                    _ld_cgim = resize(_ld_cgim!)
+                    if(_ld_cgim != nil) {
+                        image = nil
+                        image = Image(_ld_cgim!, scale: 1.0, label: Text("Loaded image"))
+                    }
+                }
+            }
+        }
+    }
+    
+    private func resize(_ image: CGImage) -> CGImage? {
+            let w = UInt(width) ?? 512
+            let h = UInt(height) ?? 768
+            var ratio: Float = 0.0
+            let imageWidth = Float(image.width)
+            let imageHeight = Float(image.height)
+            let maxWidth: Float = Float(w)/8
+            let maxHeight: Float = Float(h)/8
+            
+            // Get ratio (landscape or portrait)
+            if (imageWidth > imageHeight) {
+                ratio = maxWidth / imageWidth
+            } else {
+                ratio = maxHeight / imageHeight
+            }
+            
+            // Calculate new size based on the ratio
+            if ratio > 1 {
+                ratio = 1
+            }
+            
+            let width = imageWidth * ratio
+            let height = imageHeight * ratio
+            
+        guard let context = CGContext(data: nil, width: Int(width), height: Int(height), bitsPerComponent: 8, bytesPerRow: Int(width)*4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.noneSkipLast.rawValue).rawValue) else { return nil }
+            
+            // draw image to context (resizing it)
+            context.interpolationQuality = .high
+            context.draw(image, in: CGRect(x: 0, y: 0, width: Int(width), height: Int(height)))
+            
+            // extract resulting image from context
+            return context.makeImage()
+        }
 
     var body: some View {
         VStack(alignment: .center) {
@@ -103,11 +195,11 @@ struct ContentView: View {
             }.frame(height: 384)
             HStack {
                 Text("Prompt").bold()
-                TextField("What you want", text: $prompt)
+                TextEditor(text: $prompt).frame(height: 32).shadow(color: .secondary, radius: 4).cornerRadius(2)
             }
             HStack {
                 Text("Negative Prompt").bold()
-                TextField("What you don't want", text: $negativePrompt)
+                TextEditor(text: $negativePrompt).frame(height: 32).shadow(color: .secondary, radius: 4).cornerRadius(2)
             }
             HStack {
                 Text("Size").bold()
@@ -130,20 +222,42 @@ struct ContentView: View {
                 Slider(value: $steps, in: 5...64)
             }
             ProgressView(progressStage, value: progressProp, total: 1).foregroundColor(.secondary)
-            Button(action: generate) {
-                Text("Generate Image")
-                    .frame(minWidth: 64, maxWidth: .infinity, minHeight: 32, alignment: .center)
-                    .background(running ? .gray : .blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(32)
-            }.buttonStyle(.borderless).disabled(running)
-            Button(action: save) {
-                Text("Save Image")
-                    .frame(minWidth: 64, maxWidth: .infinity, minHeight: 32, alignment: .center)
-                    .background(running ? .gray : .blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(32)
-            }.buttonStyle(.borderless).disabled(running)
+            HStack {
+                let bgend = (running || !saved || prompt.isEmpty || negativePrompt.isEmpty)
+                let brsd = (running || seed == "-1")
+                Button(action: generate) {
+                    Text("Generate Image")
+                        .frame(minWidth: 64, maxWidth: .infinity, minHeight: 32, alignment: .center)
+                        .background(bgend ? .gray : .blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(32)
+                }.buttonStyle(.borderless).disabled(bgend)
+                Button(action: resetseed) {
+                    Text("Reset Seed")
+                        .frame(minWidth: 64, maxWidth: .infinity, minHeight: 32, alignment: .center)
+                        .background(brsd ? .gray : .blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(32)
+                }.buttonStyle(.borderless).disabled(brsd)
+            }
+            HStack {
+                let bsd = (running || _cgim == nil)
+                let bld = (running)
+                Button(action: save) {
+                    Text("Save Image")
+                        .frame(minWidth: 64, maxWidth: .infinity, minHeight: 32, alignment: .center)
+                        .background(bsd ? .gray : .blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(32)
+                }.buttonStyle(.borderless).disabled(bsd)
+                Button(action: load) {
+                    Text("Load Custom Noise")
+                        .frame(minWidth: 64, maxWidth: .infinity, minHeight: 32, alignment: .center)
+                        .background(bld ? .gray : .blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(32)
+                }.buttonStyle(.borderless).disabled(bld)
+            }
         }.padding(16).frame(width: 512)
             //.onAppear(perform: loadModels)
     }
